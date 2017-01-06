@@ -2,16 +2,26 @@
 #include <datrie/trie.h>
 #include <mysql/mysql.h>
 
-#include <iconv.h>
-#include <locale.h>
-
 #include <assert.h>
 #include <string.h>
+#include <ctype.h>
 
-/* iconv encoding name for AlphaChar string */
+#include <iconv.h>
+// iconv encoding name for AlphaChar string
 #define ALPHA_ENC   "UCS-4LE"
 
 #define N_ELEMENTS(a)   (sizeof(a)/sizeof((a)[0]))
+
+/* struct AssociatedDataNode { */
+/*     const char *word; */
+/*     const char *wordtype; */
+/*     const char *definition; */
+
+/*     AssociatedDataNode *next; */
+/* }; */
+
+/* #define ASSOCIATED_DATA_LENGTH 200000 */
+/* static AssociatedDataNode *as_data[ASSOCIATED_DATA_LENGTH]; */
 
 static size_t
 conv_to_alpha (iconv_t to_alpha_conv, const char *in, AlphaChar *out, size_t out_size)
@@ -25,14 +35,14 @@ conv_to_alpha (iconv_t to_alpha_conv, const char *in, AlphaChar *out, size_t out
 
     assert (sizeof (AlphaChar) == 4);
 
-    /* convert to UCS-4LE */
+    // convert to UCS-4LE
     res = iconv (to_alpha_conv, (char **) &in_p, &in_left,
                  &out_p, &out_left);
 
     if (res < 0)
         return res;
 
-    /* convert UCS-4LE to AlphaChar string */
+    // convert UCS-4LE to AlphaChar string
     res = 0;
     for (byte_p = (const unsigned char *) out;
          res < out_size && byte_p + 3 < (unsigned char*) out_p;
@@ -48,6 +58,14 @@ conv_to_alpha (iconv_t to_alpha_conv, const char *in, AlphaChar *out, size_t out
     }
 
     return res;
+}
+
+void to_lower_cstring(char *str) {
+    char *p = str;
+    while (*p != '\0') {
+        *p = (char) tolower(*p);
+        p++;
+    }
 }
 
 ENDict endict_init_from_db(const char* jdbc) {
@@ -78,36 +96,38 @@ ENDict endict_init_from_db(const char* jdbc) {
         fprintf(stderr, "Error connecting to database: %s\n", mysql_error(conn));
     } else { // Connected to MYSQL
         char Query[512] = {'\0'};
-        sprintf(Query, "SELECT * FROM %s.%s LIMIT 100;", Database, Table);
+        sprintf(Query, "SELECT * FROM %s.%s ORDER BY word;", Database, Table);
         printf("Executing %s\n", Query);
         if (! mysql_query(conn, Query)) {
             printf("Executed %s\n", Query);
             MYSQL_RES *res = mysql_use_result(conn);
             if (res) {
                 MYSQL_ROW row;
-                iconv_t to_alpha_conv = iconv_open (ALPHA_ENC, "UTF-8");
+                iconv_t to_alpha_conv = iconv_open(ALPHA_ENC, "UTF-8");
+                TrieData dataIndex = 0;
                 while ((row = mysql_fetch_row(res))) {
-                    gchar *word = strdup(row[0]);
-                    gchar *wordtype = strdup(row[1]);
-                    gchar *definition = strdup(row[2]);
+                    const char *key = row[0];
+                    char *k = strdup(key);
+                    to_lower_cstring(k);
+                    AlphaChar key_alpha[256];
 
-                        // TODO using glib HashMap, glib string
-                        // TODO store word to DATrie
-                        const char     *key;
-                        AlphaChar       key_alpha[256];
-                        TrieData        data;
+                    conv_to_alpha(to_alpha_conv, k, key_alpha, N_ELEMENTS(key_alpha));
 
-        key = argv[opt_idx++];
-        data = ;
-
-        conv_to_alpha (env, key, key_alpha, N_ELEMENTS (key_alpha));
-        if (!trie_store (env->trie, key_alpha, data)) {
-            fprintf (stderr, "Failed to add entry '%s' with data %d\n",
-                     key, data);
-        }
-                        printf("%s\t", row[i]);
+                    if (! trie_store_if_absent(trie, key_alpha, ++dataIndex)) {
+                        fprintf(stderr, "Failed to add entry '%s' with dataIndex %d\n", key, dataIndex);
+                        TrieData currentIndex = -1;
+                        if (trie_retrieve (trie, key_alpha, &currentIndex)) {
+                        //TODO
+                        
+                        }
+                    } else {
+                        fprintf(stdout, "add entry '%s' with dataIndex %d\n", key, dataIndex);
+                        // TODO
+                        
                     }
-                    printf("\n");
+                    if (k != NULL) {
+                        free(k);
+                    }
                 }
                 iconv_close(to_alpha_conv);
             }
@@ -133,5 +153,32 @@ void endict_free(ENDict endict) {
         trie_free((Trie *) endict);
         endict = NULL;
     }
+
+    /* for (int i = 0; i < ASSOCIATED_DATA_LENGTH; i++) { */
+    /*     if (as_data[i] != NULL) { */
+    /*     } */
+    /* } */
+}
+
+const char *endict_query(ENDict endict, const char *query) {
+    AlphaChar key_alpha[256];
+
+    char *q = strdup(query);
+    to_lower_cstring(q);
+    iconv_t to_alpha_conv = iconv_open(ALPHA_ENC, "UTF-8");
+    conv_to_alpha(to_alpha_conv, q, key_alpha, N_ELEMENTS(key_alpha));
+    iconv_close(to_alpha_conv);
+
+    TrieData dataIndex = -1;
+    if (trie_retrieve ((Trie *) endict, key_alpha, &dataIndex)) {
+        fprintf(stdout, "retrieve %s with dataIndex %d\n", query, dataIndex);
+    } else {
+        fprintf(stderr, "can not retrieve %s\n", query);
+    }
+    if (q != NULL) {
+        free(q);
+    }
+
+    return NULL;
 }
 

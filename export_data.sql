@@ -1,0 +1,4 @@
+SELECT * INTO OUTFILE '/tmp/data.csv'
+    FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '"'
+    LINES TERMINATED BY '\n'
+FROM entries.entries;

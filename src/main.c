@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
 
 #include <glib.h>
 #include "endict.h"
@@ -10,7 +11,7 @@ static gchar *dict = NULL;
 
 static GOptionEntry entries[] = {
     { "mode", NULL, 0, G_OPTION_ARG_STRING, &mode, "save: save dictionary to file; cli: query command line", "save, cli" },
-    { "db", NULL, 0, G_OPTION_ARG_STRING, &db, "mysql db formatted info", "-h 10.61.1.29 -P 3306 -u root -p root entries entries" },
+    { "db", NULL, 0, G_OPTION_ARG_STRING, &db, "mysql db formatted info", "-h localhost -P 3306 -u root -p root entries entries" },
     { "dict", NULL, 0, G_OPTION_ARG_STRING, &dict, "dictionary file path; mode:save => output, mode:cli => input", "./dictionary.dat" },
     { NULL }
 };
@@ -36,7 +37,7 @@ int main(const int argc, const char *argv[]) {
             return 1;
         }
         ENDict endict = endict_init_from_db(db);
-        /* endict_save_to_dict(endict, dict); */
+        endict_save_to_dict(endict, dict);
         endict_free(endict);
     } else if (! strcmp(mode, "cli")) {
         ENDict endict = NULL; 
@@ -48,6 +49,25 @@ int main(const int argc, const char *argv[]) {
             fprintf(stderr, "db or dict should be set.\n");
             return 1;
         }
+
+        assert(endict != NULL);
+
+        // TODO query loop
+        char query[256] = {'\0'};
+        const char *result = NULL;
+        fprintf(stdout, "endict-cli > ");
+        while (fscanf(stdin, "%s", query)) {
+            if (! strcmp(query, "!quit")) {
+                fprintf(stdout, "\n Good bye!\n");
+                break;
+            }
+            result = endict_query(endict, query);
+            if (result != NULL) {
+                fprintf(stdout, "%s", result);
+            }
+            fprintf(stdout, "\nendict-cli > ");
+        }
+
         endict_free(endict);
     } else {
         fprintf(stderr, "unknown mode = %s.\n", mode);
